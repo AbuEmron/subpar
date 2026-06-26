@@ -114,16 +114,16 @@ async function mgLoadLive(name){
   try{
     const nr=await fetch('https://nominatim.openstreetmap.org/search?q='+encodeURIComponent(name)+'&format=json&limit=1');
     const nj=await nr.json();
-    if(!nj.length){alert('Course not found. Try a more specific name.');return;}
+    if(!nj.length){if(document.getElementById('mgPickState')){document.getElementById('mgPickState').textContent='Course not found — try a more specific name.';}else{alert('Course not found.');}return;}
     const bb=nj[0].boundingbox.map(Number); // [s,n,w,e]
     let s=bb[0],n=bb[1],w=bb[2],e=bb[3];
     // clamp / pad
     const cy=(s+n)/2, cx=(w+e)/2;
     s=Math.max(s,cy-0.02);n=Math.min(n,cy+0.02);w=Math.max(w,cx-0.025);e=Math.min(e,cx+0.025);
     const c=await extractOSM(name,[w,s,e,n],[cx,cy]);
-    if(!c.holes.length){alert('No OSM hole data mapped for "'+name+'" yet. You could be the one to map it.');if(st)st.textContent='From tee · tap map or enable GPS';return;}
+    if(!c.holes.length){var ps=document.getElementById('mgPickState');if(ps){ps.textContent='No OSM hole data for that course yet — you could map it.';}else{alert('No OSM hole data mapped yet.');}return;}
     localStorage.setItem('mg_course_'+slug(name),JSON.stringify(c));
-    loadCourse(c);renderHole();
+    loadCourse(c);renderHole();if(window.closeSheet)closeSheet();
     if(window.toast)toast(c.holes.length+' holes loaded from OpenStreetMap');
   }catch(err){alert('Could not load course data (OSM busy). Try again.');if(st)st.textContent='From tee · tap map or enable GPS';}
 }
@@ -145,4 +145,20 @@ async function extractOSM(name,bbox,center){
   const hz=[...golf('bunker').map(w=>cen(wc(w))).filter(near).map(p=>['b',+p[0].toFixed(6),+p[1].toFixed(6)]),...ways.filter(w=>['water_hazard','lateral_water_hazard'].includes(tag(w,'golf'))).map(w=>cen(wc(w))).filter(near).map(p=>['w',+p[0].toFixed(6),+p[1].toFixed(6)])];
   return {n:name,src:'OpenStreetMap, ODbL',holes,hz};
 }
+
+/* ---- course picker (search + popular), overrides prompt-based loader ---- */
+const POPULAR=['Spyglass Hill Golf Course','Torrey Pines Golf Course','Bethpage State Park Black Course','TPC Sawgrass','Pinehurst No. 2','Chambers Bay','Whistling Straits','Bandon Dunes','Kiawah Island Ocean Course','St Andrews Links Old Course','Augusta National Golf Club','Pebble Beach Golf Links'];
+function pickState(t){const e=document.getElementById('mgPickState');if(e){e.style.display='block';e.textContent=t;}else if(window.toast)toast(t);}
+window.mgOpenPicker=function(){
+  const rows=POPULAR.map((n,i)=>'<div class="row" onclick="mgPick('+i+')"><div class="ic" style="font-size:18px">&#9971;</div><div class="main"><h4>'+n+'</h4><p>'+(n==='Pebble Beach Golf Links'?'Baked offline':'Live from OpenStreetMap')+'</p></div><div class="end"><span class="badge">Load</span></div></div>').join('');
+  document.getElementById('sheet').innerHTML='<div class="grab"></div><h2>Courses</h2><div class="sub">Search any course on earth &mdash; live from OpenStreetMap</div>'+
+   '<input id="mgSearch" placeholder="Search a course…" autocomplete="off" style="width:100%;padding:13px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--stroke);color:var(--txt);font-size:15px;margin-bottom:12px" onkeydown="if(event.key===String.fromCharCode(69,110,116,101,114))mgSearchGo()"/>'+
+   '<div id="mgPickState" style="color:var(--muted);font-size:13px;margin:2px 0 12px;display:none"></div>'+
+   '<div class="list">'+rows+'</div>';
+  if(window.openSheet)openSheet();
+};
+window.mgPickCourse=window.mgOpenPicker;
+window.mgSearchGo=function(){var v=(document.getElementById('mgSearch').value||'').trim();if(v){pickState('Searching '+v+'…');mgLoadLive(v);}};
+window.mgPick=function(i){var n=POPULAR[i];pickState('Loading '+n+'…');if(n==='Pebble Beach Golf Links'){fetch('pebble.json').then(function(r){return r.json();}).then(function(c){loadCourse(c);renderHole();if(window.closeSheet)closeSheet();});return;}mgLoadLive(n);};
+
 })();
