@@ -1,7 +1,7 @@
 /* Mulliganaire — real-course engine: OpenStreetMap data + Esri imagery + live GPS + crowdsource */
 (function(){
 const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-const MG={map:null,tiles:null,course:null,hi:0,edit:false,pos:null,layers:null,userMk:null,measureMk:null,started:false};
+const MG={map:null,tiles:null,course:null,hi:0,edit:false,pos:null,layers:null,userMk:null,measureMk:null,started:false,elev:{},wind:null,windAt:0,windLoc:null};
 window.MG=MG;
 const R=6371000, rd=d=>d*Math.PI/180, deg=r=>r*180/Math.PI;
 function dist(a,b){const dLat=rd(b[1]-a[1]),dLon=rd(b[0]-a[0]),la1=rd(a[1]),la2=rd(b[1]);const h=Math.sin(dLat/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
@@ -56,6 +56,8 @@ function renderHole(){
   if(MG.pos)drawUser();
   MG.map.fitBounds(L.latLngBounds([ll(h.t),ll(h.g)]).pad(0.35));
   updateDist();
+  ensureElev([h.t,h.g].concat(MG.pos?[MG.pos]:[])).then(updateConditions);
+  ensureWind(h.g).then(updateConditions);
 }
 function drawUser(){ if(!MG.pos)return; if(MG.userMk)MG.userMk.setLatLng(ll(MG.pos)); else MG.userMk=L.circleMarker(ll(MG.pos),{radius:7,color:'#fff',weight:2,fillColor:'#19e57f',fillOpacity:1}).addTo(MG.map); }
 function updateDist(){
@@ -66,6 +68,7 @@ function updateDist(){
   document.getElementById('mgBack').textContent=yd(dist(ref,h.back));
   document.getElementById('mgClub').textContent=club(yd(dist(ref,h.g)));
   document.getElementById('mgGpsState').textContent=MG.pos?'GPS live':'From tee · tap map or enable GPS';
+  updateConditions();
 }
 function onMapClick(e){
   if(!MG.course)return;
@@ -160,5 +163,51 @@ window.mgOpenPicker=function(){
 window.mgPickCourse=window.mgOpenPicker;
 window.mgSearchGo=function(){var v=(document.getElementById('mgSearch').value||'').trim();if(v){pickState('Searching '+v+'…');mgLoadLive(v);}};
 window.mgPick=function(i){var n=POPULAR[i];pickState('Loading '+n+'…');if(n==='Pebble Beach Golf Links'){fetch('pebble.json').then(function(r){return r.json();}).then(function(c){loadCourse(c);renderHole();if(window.closeSheet)closeSheet();});return;}mgLoadLive(n);};
+
+
+/* ---- elevation + live wind (free, keyless, via Open-Meteo) ---- */
+function ekey(p){return p[1].toFixed(4)+','+p[0].toFixed(4);}
+function bearingDeg(a,b){return (deg(brg(a,b))+360)%360;}
+async function ensureElev(points){
+  const need=points.filter(p=>MG.elev[ekey(p)]===undefined);
+  if(!need.length)return;
+  try{
+    const la=need.map(p=>p[1].toFixed(5)).join(','), lo=need.map(p=>p[0].toFixed(5)).join(',');
+    const r=await fetch('https://api.open-meteo.com/v1/elevation?latitude='+la+'&longitude='+lo);
+    const j=await r.json(); (j.elevation||[]).forEach((e,i)=>{MG.elev[ekey(need[i])]=e;});
+  }catch(e){}
+}
+async function ensureWind(p){
+  const now=Date.now();
+  if(MG.wind&&MG.windLoc&&dist(p,MG.windLoc)<30000&&now-MG.windAt<600000)return;
+  try{
+    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+p[1].toFixed(3)+'&longitude='+p[0].toFixed(3)+'&current=wind_speed_10m,wind_direction_10m,temperature_2m&wind_speed_unit=mph&temperature_unit=fahrenheit');
+    const j=await r.json();
+    if(j.current){MG.wind={spd:j.current.wind_speed_10m,dir:j.current.wind_direction_10m,temp:j.current.temperature_2m};MG.windAt=now;MG.windLoc=p;}
+  }catch(e){}
+}
+function updateConditions(){
+  if(!MG.course)return;
+  const h=MG.course.holes[MG.hi], ref=MG.pos||h.t, green=h.g;
+  const horiz=yd(dist(ref,green));
+  let elevAdj=0, dz=null;
+  const er=MG.elev[ekey(ref)], eg=MG.elev[ekey(green)];
+  if(er!==undefined&&eg!==undefined){dz=Math.round((eg-er)*3.281);elevAdj=dz*0.33;}
+  let windAdj=0, wtxt='';
+  if(MG.wind){
+    const shot=bearingDeg(ref,green), toward=(MG.wind.dir+180)%360;
+    const ang=(toward-shot)*Math.PI/180;
+    const along=MG.wind.spd*Math.cos(ang);            // + tailwind, - headwind
+    windAdj=-along*horiz*0.01;                          // ~1% of carry per mph
+    const kind=along<-0.7?'into':along>0.7?'down':'cross';
+    wtxt=Math.round(MG.wind.spd)+'mph '+kind+' · '+Math.round(MG.wind.temp)+'°';
+  }
+  const plays=Math.round(horiz+elevAdj+windAdj);
+  const clubEl=document.getElementById('mgClub'); if(clubEl)clubEl.textContent=club(plays);
+  const pl=document.getElementById('mgPlays');
+  if(pl)pl.textContent='Plays '+plays+'y'+(dz!==null?(' · '+(dz>=0?'↑':'↓')+Math.abs(dz)+'ft'):'');
+  const wd=document.getElementById('mgWind');
+  if(wd){ wd.innerHTML = MG.wind ? '<span style="display:inline-block;transform:rotate('+(((MG.wind.dir+180)%360))+'deg)">↑</span> '+wtxt : ''; }
+}
 
 })();

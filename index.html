@@ -284,6 +284,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .mgi.tgt{width:16px;height:16px;border-radius:50%;background:#19e57f;border:2px solid #fff}
 .mg-attrib{font-size:10px;color:var(--muted);margin-top:10px;text-align:center;line-height:1.5}
 #mgEditBtn.on{background:var(--grad-green);color:#04140c;border:none}
+.mg-cond{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;font-size:13px;min-height:18px}
+.mg-cond .wind{color:var(--sky);font-weight:600;display:flex;align-items:center;gap:5px}
+.mg-cond .plays{color:var(--gold);font-weight:700;font-family:'Sora'}
 </style>
 </head>
 <body>
@@ -389,6 +392,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
         <div class="distseg"><div class="k">Back</div><div class="v" id="mgBack">&ndash;</div></div>
       </div>
       <div class="club"><span class="l" id="mgGpsState">From tee &middot; tap map or enable GPS</span><span class="c" id="mgClub">&ndash;</span></div>
+      <div class="mg-cond"><span id="mgWind" class="wind"></span><span id="mgPlays" class="plays"></span></div>
     </div>
     <div class="holenav">
       <button onclick="mgHole(-1)">&lsaquo; Prev</button>
