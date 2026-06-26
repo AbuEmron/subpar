@@ -39,7 +39,7 @@ function renderHole(){
   const h=MG.course.holes[MG.hi];
   document.getElementById('mgHoleNum').textContent=h.h;
   document.getElementById('mgHolePar').textContent=h.par||'–';
-  document.getElementById('mgHoleYds').textContent=(h.y||yd(dist(h.t,h.g)))+'y';
+  document.getElementById('mgHoleYds').textContent=(h.y||yd(dist(h.t,h.g)))+'y'+(h.approx?' ~est':'');
   clear();
   L.polyline([ll(h.t),ll(h.g)],{color:'#fff',weight:2,opacity:.7,dashArray:'4 7'}).addTo(MG.layers);
   // hazards near this hole
