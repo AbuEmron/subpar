@@ -119,7 +119,7 @@ async function mgLoadLive(name){
     let s=bb[0],n=bb[1],w=bb[2],e=bb[3];
     // clamp / pad
     const cy=(s+n)/2, cx=(w+e)/2;
-    s=Math.max(s,cy-0.02);n=Math.min(n,cy+0.02);w=Math.max(w,cx-0.025);e=Math.min(e,cx+0.025);
+    s=Math.max(s,cy-0.03);n=Math.min(n,cy+0.03);w=Math.max(w,cx-0.035);e=Math.min(e,cx+0.035);
     const c=await extractOSM(name,[w,s,e,n],[cx,cy]);
     if(!c.holes.length){var ps=document.getElementById('mgPickState');if(ps){ps.textContent='No OSM hole data for that course yet — you could map it.';}else{alert('No OSM hole data mapped yet.');}return;}
     localStorage.setItem('mg_course_'+slug(name),JSON.stringify(c));
@@ -138,9 +138,9 @@ async function extractOSM(name,bbox,center){
   const cen=cs=>{let x=0,y=0;cs.forEach(p=>{x+=p[0];y+=p[1];});return[x/cs.length,y/cs.length];};
   const len=cs=>{let s=0;for(let i=1;i<cs.length;i++)s+=dist(cs[i-1],cs[i]);return s;};
   const best={};
-  golf('hole').forEach(w=>{const cs=wc(w);if(cs.length<2)return;const ref=+(tag(w,'ref')||0);if(ref<1||ref>18)return;if(dist(cen(cs),center)>1600)return;const L2=len(cs);if(!best[ref]||L2>best[ref].L)best[ref]={ref,par:+(tag(w,'par')||0),cs,L:L2};});
+  golf('hole').forEach(w=>{const cs=wc(w);if(cs.length<2)return;const ref=+(tag(w,'ref')||0);if(ref<1||ref>18)return;if(dist(cen(cs),center)>4000)return;const L2=len(cs);if(!best[ref]||L2>best[ref].L)best[ref]={ref,par:+(tag(w,'par')||0),cs,L:L2};});
   const greens=golf('green').map(w=>({c:cen(wc(w)),poly:wc(w)}));
-  const holes=Object.values(best).sort((a,b)=>a.ref-b.ref).map(h=>{const t=h.cs[0],e=h.cs[h.cs.length-1];let g=null,gd=1e9;greens.forEach(G=>{const d=dist(G.c,e);if(d<gd&&d<70){gd=d;g=G;}});const gc=g?g.c:e;return {h:h.ref,par:h.par||null,y:Math.round(h.L/0.9144),t:[+t[0].toFixed(6),+t[1].toFixed(6)],g:[+gc[0].toFixed(6),+gc[1].toFixed(6)]};});
+  const holes=Object.values(best).sort((a,b)=>a.ref-b.ref).map(h=>{const t=h.cs[0],e=h.cs[h.cs.length-1];let g=null,gd=1e9;greens.forEach(G=>{const d=dist(G.c,e);if(d<gd&&d<110){gd=d;g=G;}});const gc=g?g.c:e;return {h:h.ref,par:h.par||null,y:Math.round(h.L/0.9144),t:[+t[0].toFixed(6),+t[1].toFixed(6)],g:[+gc[0].toFixed(6),+gc[1].toFixed(6)]};});
   const near=p=>holes.some(h=>dist(p,h.g)<240||dist(p,h.t)<240);
   const hz=[...golf('bunker').map(w=>cen(wc(w))).filter(near).map(p=>['b',+p[0].toFixed(6),+p[1].toFixed(6)]),...ways.filter(w=>['water_hazard','lateral_water_hazard'].includes(tag(w,'golf'))).map(w=>cen(wc(w))).filter(near).map(p=>['w',+p[0].toFixed(6),+p[1].toFixed(6)])];
   return {n:name,src:'OpenStreetMap, ODbL',holes,hz};
