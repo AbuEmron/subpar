@@ -9,6 +9,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 :root{
   --bg:#070b0a;
@@ -266,6 +268,22 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .splash .word{font-family:'Sora';font-weight:800;font-size:30px;letter-spacing:-.04em;opacity:0;animation:rise .9s .15s var(--ease) forwards}
 .splash .tag{color:var(--muted);font-size:13px;letter-spacing:.18em;text-transform:uppercase;opacity:0;animation:rise .9s .3s var(--ease) forwards}
 @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+#mgmap{height:calc(100vh - 300px);min-height:360px;width:100%;border-radius:16px;overflow:hidden;background:#0c1411;z-index:1}
+.leaflet-container{background:#0c1411;font-family:inherit}
+.play-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 10px}
+.coursebtn{font-family:'Sora';font-weight:700;font-size:15px;color:var(--txt);display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--stroke);padding:9px 13px;border-radius:12px}
+.coursebtn:active{transform:scale(.97)}
+.play-holepill{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap}
+.play-holepill b{color:var(--txt)}
+.mg-hud{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+.mgi{display:grid;place-items:center;font-size:11px;font-weight:800}
+.mgi.tee{width:14px;height:14px;border-radius:50%;background:#cfe9d8;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+.mgi.grn{font-size:17px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.mgi.fb{width:16px;height:16px;border-radius:50%;background:rgba(7,11,10,.8);color:#19e57f;border:1px solid #19e57f;font-size:9px}
+.mgi.tgt{width:16px;height:16px;border-radius:50%;background:#19e57f;border:2px solid #fff}
+.mg-attrib{font-size:10px;color:var(--muted);margin-top:10px;text-align:center;line-height:1.5}
+#mgEditBtn.on{background:var(--grad-green);color:#04140c;border:none}
 </style>
 </head>
 <body>
@@ -359,31 +377,26 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
   </section>
 
   <section class="view" id="view-play">
-    <div class="section-title" style="margin-top:14px">Pebble Creek &middot; Hole <span id="holeNum2">7</span></div>
-    <div class="holewrap" id="holeWrap">
-      <svg class="holesvg" id="holeSvg" viewBox="0 0 360 520" preserveAspectRatio="xMidYMid slice"></svg>
-      <div class="hud top">
-        <div class="holepill"><div class="n">HOLE <span id="holeNum">7</span> &middot; PAR <span id="holePar">4</span></div><div class="v" id="holeYds">412y</div></div>
-        <div class="holepill"><div class="n">SCORE</div><div class="v" id="liveScore">E</div></div>
+    <div class="play-head">
+      <button class="coursebtn" onclick="mgPickCourse()"><span id="mgCourseName">Pebble Beach Golf Links</span> &#9662;</button>
+      <div class="play-holepill">HOLE <b id="mgHoleNum">1</b> &middot; PAR <b id="mgHolePar">4</b> &middot; <span id="mgHoleYds">382y</span></div>
+    </div>
+    <div id="mgmap"></div>
+    <div class="mg-hud">
+      <div class="distrow">
+        <div class="distseg"><div class="k">Front</div><div class="v" id="mgFront">&ndash;</div></div>
+        <div class="distseg" style="background:var(--grad-green);color:#04140c;border:none"><div class="k" style="color:rgba(4,20,12,.7)">Center</div><div class="v" id="mgCenter">&ndash;</div></div>
+        <div class="distseg"><div class="k">Back</div><div class="v" id="mgBack">&ndash;</div></div>
       </div>
-      <div class="tap-hint" id="tapHint">Tap the map to measure a target</div>
-      <div class="hud bottom">
-        <div class="distrow">
-          <div class="distseg"><div class="k">Front</div><div class="v" id="dFront">188</div></div>
-          <div class="distseg" style="background:var(--grad-green);color:#04140c;border:none"><div class="k" style="color:rgba(4,20,12,.7)">Center</div><div class="v" id="dCenter">201</div></div>
-          <div class="distseg"><div class="k">Back</div><div class="v" id="dBack">217</div></div>
-        </div>
-        <div class="club">
-          <span class="l">Suggested &middot; plays <span id="playsLike">+6y</span> uphill</span>
-          <span class="c" id="clubRec">4 iron</span>
-        </div>
-      </div>
+      <div class="club"><span class="l" id="mgGpsState">From tee &middot; tap map or enable GPS</span><span class="c" id="mgClub">&ndash;</span></div>
     </div>
     <div class="holenav">
-      <button onclick="changeHole(-1)">&lsaquo; Prev</button>
-      <button onclick="openScorecard()">Scorecard</button>
-      <button class="cta" onclick="changeHole(1)">Next &rsaquo;</button>
+      <button onclick="mgHole(-1)">&lsaquo; Prev</button>
+      <button onclick="mgToggleEdit()" id="mgEditBtn">Edit pins</button>
+      <button onclick="openScorecard()">Card</button>
+      <button class="cta" onclick="mgHole(1)">Next &rsaquo;</button>
     </div>
+    <div class="mg-attrib">Map data &copy; OpenStreetMap contributors (ODbL) &middot; Imagery &copy; Esri &middot; <span id="mgEdits">0 local edits</span></div>
   </section>
 
   <section class="view" id="view-practice">
@@ -518,7 +531,7 @@ function go(v){
   window.scrollTo(0,0);
   if(navigator.vibrate)navigator.vibrate(8);
   if(v==='insights')drawScoreChart();
-  if(v==='play')drawHole();
+  if(v==='play')mgShow();
   if(v==='home'){animateSG('sgCard');drawSpark();}
 }
 
@@ -799,12 +812,13 @@ function init(){
   renderCatTabs();renderDrills();renderRings();renderLB();renderMedals();renderProx();
   document.getElementById('streakDays').textContent=S.streak+'-day streak';
   document.getElementById('streakXp').textContent=S.xp.toLocaleString();
-  drawSpark();drawHole();
+  drawSpark();
   setTimeout(()=>animateSG('sgCard'),400);
   setTimeout(()=>{document.getElementById('splash').classList.add('hide');},1400);
 }
 init();
 if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 </script>
+<script src="play-engine.js"></script>
 </body>
 </html>
