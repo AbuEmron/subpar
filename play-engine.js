@@ -1,7 +1,7 @@
 /* Mulliganaire — real-course engine: OpenStreetMap data + Esri imagery + live GPS + crowdsource */
 (function(){
 const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-const MG={map:null,tiles:null,course:null,hi:0,edit:false,pos:null,layers:null,userMk:null,measureMk:null,started:false,elev:{},wind:null,windAt:0,windLoc:null};
+const MG={map:null,tiles:null,course:null,hi:0,edit:false,pos:null,layers:null,userMk:null,measureMk:null,started:false,elev:{},wind:null,windAt:0,windLoc:null,mode:'measure',shotsData:{}};
 window.MG=MG;
 const R=6371000, rd=d=>d*Math.PI/180, deg=r=>r*180/Math.PI;
 function dist(a,b){const dLat=rd(b[1]-a[1]),dLon=rd(b[0]-a[0]),la1=rd(a[1]),la2=rd(b[1]);const h=Math.sin(dLat/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
@@ -28,6 +28,7 @@ function loadCourse(c){
   });
   MG.course=c; MG.hi=0;
   const nm=document.getElementById('mgCourseName'); if(nm)nm.textContent=c.n;
+  MG.shotsData=loadShots();
   updateEditCount();
 }
 
@@ -45,14 +46,16 @@ function renderHole(){
   // hazards near this hole
   (MG.course.hz||[]).forEach(z=>{const p=[z[1],z[2]];if(dist(p,h.g)<240||dist(p,h.t)<240){L.circleMarker(ll(p),{radius:5,color:z[0]==='w'?'#46c8ff':'#e9dcae',weight:1,fillColor:z[0]==='w'?'#2b8fd0':'#e9dcae',fillOpacity:.85}).addTo(MG.layers);}});
   // tee + green markers (draggable in edit mode)
-  const tee=L.marker(ll(h.t),{icon:divMk('tee'),draggable:MG.edit}).addTo(MG.layers);
-  const grn=L.marker(ll(h.g),{icon:divMk('grn','⛳'),draggable:MG.edit}).addTo(MG.layers);
-  if(MG.edit){
+  const tee=L.marker(ll(h.t),{icon:divMk('tee'),draggable:MG.mode==='edit'}).addTo(MG.layers);
+  const grn=L.marker(ll(h.g),{icon:divMk('grn','⛳'),draggable:MG.mode==='edit'}).addTo(MG.layers);
+  if(MG.mode==='edit'){
     tee.on('dragend',e=>{const ll2=e.target.getLatLng();h.t=[+ll2.lng.toFixed(6),+ll2.lat.toFixed(6)];saveEdit(MG.course.n,h.h,'t',h.t);loadCourse(MG.course);MG.hi=MG.course.holes.findIndex(x=>x.h===h.h);renderHole();});
     grn.on('dragend',e=>{const ll2=e.target.getLatLng();h.g=[+ll2.lng.toFixed(6),+ll2.lat.toFixed(6)];saveEdit(MG.course.n,h.h,'g',h.g);loadCourse(MG.course);MG.hi=MG.course.holes.findIndex(x=>x.h===h.h);renderHole();});
   }
   L.marker(ll(h.front),{icon:divMk('fb','F')}).addTo(MG.layers);
   L.marker(ll(h.back),{icon:divMk('fb','B')}).addTo(MG.layers);
+  const sh=(MG.shotsData&&MG.shotsData[h.h])||[];
+  if(sh.length){const pts=[h.t].concat(sh);L.polyline(pts.map(ll),{color:'#ffce4d',weight:2.5,opacity:.9}).addTo(MG.layers);for(let i=1;i<pts.length;i++){L.marker(ll(pts[i]),{icon:divMk('shot',i)}).addTo(MG.layers).bindTooltip(yd(dist(pts[i-1],pts[i]))+'y',{direction:'top'});}}
   if(MG.pos)drawUser();
   MG.map.fitBounds(L.latLngBounds([ll(h.t),ll(h.g)]).pad(0.35));
   updateDist();
@@ -73,11 +76,19 @@ function updateDist(){
 function onMapClick(e){
   if(!MG.course)return;
   const p=[e.latlng.lng,e.latlng.lat];
-  if(MG.edit){ // add a bunker
+  const h=MG.course.holes[MG.hi];
+  if(MG.mode==='edit'){ // add a bunker
     MG.course.hz=MG.course.hz||[]; MG.course.hz.push(['b',+p[0].toFixed(6),+p[1].toFixed(6)]);
     saveEdit(MG.course.n,'haz',Date.now()+'',p); renderHole(); return;
   }
-  const ref=MG.pos||MG.course.holes[MG.hi].t;
+  if(MG.mode==='track'){ // log a shot
+    MG.shotsData[h.h]=MG.shotsData[h.h]||[];
+    MG.shotsData[h.h].push([+p[0].toFixed(6),+p[1].toFixed(6)]);
+    saveShots(); renderHole();
+    if(window.toast)toast('Shot '+MG.shotsData[h.h].length+' tracked');
+    return;
+  }
+  const ref=MG.pos||h.t;
   const d=yd(dist(ref,p));
   if(MG.measureMk)MG.map.removeLayer(MG.measureMk);
   MG.measureMk=L.marker(ll(p),{icon:divMk('tgt')}).addTo(MG.map).bindPopup('<b>'+d+' yds</b><br>'+club(d)).openPopup();
@@ -209,5 +220,48 @@ function updateConditions(){
   const wd=document.getElementById('mgWind');
   if(wd){ wd.innerHTML = MG.wind ? '<span style="display:inline-block;transform:rotate('+(((MG.wind.dir+180)%360))+'deg)">↑</span> '+wtxt : ''; }
 }
+
+
+/* ---- modes, shot tracking, real scorecard ---- */
+function loadShots(){try{return JSON.parse(localStorage.getItem('mg_shots_'+slug(MG.course.n))||'{}');}catch(e){return {};}}
+function saveShots(){try{localStorage.setItem('mg_shots_'+slug(MG.course.n),JSON.stringify(MG.shotsData||{}));}catch(e){}}
+function loadScore(){try{return JSON.parse(localStorage.getItem('mg_score_'+slug(MG.course.n))||'{}');}catch(e){return {};}}
+function saveScore(m){try{localStorage.setItem('mg_score_'+slug(MG.course.n),JSON.stringify(m));}catch(e){}}
+window.mgMode=function(m){
+  MG.mode=m;
+  ['measure','track','edit'].forEach(x=>{const b=document.getElementById('m'+x[0].toUpperCase()+x.slice(1));if(b)b.classList.toggle('on',x===m);});
+  renderHole();
+  if(window.toast)toast(m==='track'?'Tap your ball after each shot':m==='edit'?'Drag pins · tap to add a bunker':'Tap the map to measure');
+};
+window.mgToggleEdit=function(){mgMode(MG.mode==='edit'?'measure':'edit');};
+function holeScore(h,shots,man){ if(man[h.h]!=null)return man[h.h]; const s=shots[h.h]; return (s&&s.length)?s.length:null; }
+window.openScorecard=function(){
+  if(!MG.course){return;}
+  const c=MG.course, shots=loadShots(), man=loadScore();
+  let tot=0,par=0; c.holes.forEach(h=>{const v=holeScore(h,shots,man); if(v!=null){tot+=v;par+=(h.par||0);}});
+  const diff=tot-par;
+  document.getElementById('sheet').innerHTML='<div class="grab"></div>'+
+   '<div class="sc-head"><div><h2>Scorecard</h2><div class="sub" style="margin:0">'+c.n+' &middot; auto from tracked shots</div></div>'+
+   '<div style="text-align:right"><div class="sc-total">'+(tot||'&mdash;')+' <small>'+(tot?((diff>0?'+':'')+(diff===0?'E':diff)):'')+'</small></div></div></div>'+
+   '<div class="holegrid" id="mgGrid"></div>'+
+   '<button class="btn primary" style="margin-top:18px" onclick="closeSheet()">Done</button>';
+  mgGrid(); if(window.openSheet)openSheet();
+};
+function mgGrid(){
+  const c=MG.course, shots=loadShots(), man=loadScore();
+  document.getElementById('mgGrid').innerHTML=c.holes.map(h=>{
+    const v=holeScore(h,shots,man); let cls='';
+    if(v!=null&&h.par){const d=v-h.par; if(d<=-2)cls='eagle'; else if(d<0)cls='birdie'; else if(d>0)cls='bogey';}
+    return '<div class="holecell '+cls+'"><div class="h">H'+h.h+(h.approx?' ~':'')+'</div><div class="par">PAR '+(h.par||'-')+'</div>'+
+      '<div class="stepper"><button onclick="mgAdj('+h.h+',-1)">&minus;</button><div class="sval">'+(v!=null?v:'&middot;')+'</div><button onclick="mgAdj('+h.h+',1)">+</button></div></div>';
+  }).join('');
+}
+window.mgAdj=function(hn,d){
+  const c=MG.course, man=loadScore(), shots=loadShots(), h=c.holes.find(x=>x.h===hn);
+  let v=man[hn]; if(v==null)v=(shots[hn]&&shots[hn].length)||h.par||4;
+  v=Math.max(1,Math.min(15,v+d)); man[hn]=v; saveScore(man); mgGrid();
+  let tot=0,par=0; c.holes.forEach(hh=>{const vv=holeScore(hh,shots,man); if(vv!=null){tot+=vv;par+=(hh.par||0);}});
+  const diff=tot-par; const el=document.querySelector('#sheet .sc-total'); if(el)el.innerHTML=tot+' <small>'+(diff>0?'+':'')+(diff===0?'E':diff)+'</small>';
+};
 
 })();

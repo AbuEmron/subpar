@@ -287,6 +287,11 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .mg-cond{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;font-size:13px;min-height:18px}
 .mg-cond .wind{color:var(--sky);font-weight:600;display:flex;align-items:center;gap:5px}
 .mg-cond .plays{color:var(--gold);font-weight:700;font-family:'Sora'}
+.mg-modes{display:flex;gap:8px;margin-top:12px}
+.modechip{flex:1;padding:10px;border-radius:12px;background:var(--surface);border:1px solid var(--stroke);font-size:13px;font-weight:600;color:var(--muted);transition:all .2s var(--ease)}
+.modechip:active{transform:scale(.97)}
+.modechip.on{background:var(--txt);color:#04140c;border-color:var(--txt)}
+.mgi.shot{width:18px;height:18px;border-radius:50%;background:#ffce4d;color:#3a2a00;border:1.5px solid #fff;font-size:11px;font-weight:800}
 </style>
 </head>
 <body>
@@ -394,10 +399,14 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
       <div class="club"><span class="l" id="mgGpsState">From tee &middot; tap map or enable GPS</span><span class="c" id="mgClub">&ndash;</span></div>
       <div class="mg-cond"><span id="mgWind" class="wind"></span><span id="mgPlays" class="plays"></span></div>
     </div>
+    <div class="mg-modes">
+      <button id="mMeasure" class="modechip on" onclick="mgMode('measure')">Measure</button>
+      <button id="mTrack" class="modechip" onclick="mgMode('track')">Track shots</button>
+      <button id="mEdit" class="modechip" onclick="mgMode('edit')">Edit</button>
+    </div>
     <div class="holenav">
       <button onclick="mgHole(-1)">&lsaquo; Prev</button>
-      <button onclick="mgToggleEdit()" id="mgEditBtn">Edit pins</button>
-      <button onclick="openScorecard()">Card</button>
+      <button onclick="openScorecard()">Scorecard</button>
       <button class="cta" onclick="mgHole(1)">Next &rsaquo;</button>
     </div>
     <div class="mg-attrib">Map data &copy; OpenStreetMap contributors (ODbL) &middot; Imagery &copy; Esri &middot; <span id="mgEdits">0 local edits</span></div>
