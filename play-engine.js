@@ -2,13 +2,15 @@
 (function(){
 const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const MG={map:null,tiles:null,course:null,hi:0,edit:false,pos:null,layers:null,userMk:null,measureMk:null,started:false,elev:{},wind:null,windAt:0,windLoc:null,mode:'measure',shotsData:{}};
-window.MG=MG;
+window.MG=MG; try{MG.units=localStorage.getItem('mg_units')||'y';}catch(e){MG.units='y';}
 const R=6371000, rd=d=>d*Math.PI/180, deg=r=>r*180/Math.PI;
 function dist(a,b){const dLat=rd(b[1]-a[1]),dLon=rd(b[0]-a[0]),la1=rd(a[1]),la2=rd(b[1]);const h=Math.sin(dLat/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
 const yd=m=>Math.round(m/0.9144);
 function brg(a,b){const y=Math.sin(rd(b[0]-a[0]))*Math.cos(rd(b[1]));const x=Math.cos(rd(a[1]))*Math.sin(rd(b[1]))-Math.sin(rd(a[1]))*Math.cos(rd(b[1]))*Math.cos(rd(b[0]-a[0]));return Math.atan2(y,x);}
 function dest(p,b,m){const dr=m/R,la1=rd(p[1]),lo1=rd(p[0]);const la2=Math.asin(Math.sin(la1)*Math.cos(dr)+Math.cos(la1)*Math.sin(dr)*Math.cos(b));const lo2=lo1+Math.atan2(Math.sin(b)*Math.sin(dr)*Math.cos(la1),Math.cos(dr)-Math.sin(la1)*Math.sin(la2));return [deg(lo2),deg(la2)];}
 const ll=p=>[p[1],p[0]];
+function un(y){return MG.units==='m'?Math.round(y*0.9144):Math.round(y);}
+function ud(y){return MG.units==='m'?(un(y)+'m'):(Math.round(y)+'y');}
 const club=y=>(window.clubFor?window.clubFor(y):'');
 
 function slug(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40);}
@@ -40,7 +42,7 @@ function renderHole(){
   const h=MG.course.holes[MG.hi];
   document.getElementById('mgHoleNum').textContent=h.h;
   document.getElementById('mgHolePar').textContent=h.par||'–';
-  document.getElementById('mgHoleYds').textContent=(h.y||yd(dist(h.t,h.g)))+'y'+(h.approx?' ~est':'');
+  document.getElementById('mgHoleYds').textContent=ud(h.y||yd(dist(h.t,h.g)))+(h.approx?' ~est':'');
   clear();
   L.polyline([ll(h.t),ll(h.g)],{color:'#fff',weight:2,opacity:.7,dashArray:'4 7'}).addTo(MG.layers);
   // hazards near this hole
@@ -66,9 +68,9 @@ function drawUser(){ if(!MG.pos)return; if(MG.userMk)MG.userMk.setLatLng(ll(MG.p
 function updateDist(){
   const h=MG.course.holes[MG.hi];
   const ref=MG.pos||h.t;
-  document.getElementById('mgFront').textContent=yd(dist(ref,h.front));
-  document.getElementById('mgCenter').textContent=yd(dist(ref,h.g));
-  document.getElementById('mgBack').textContent=yd(dist(ref,h.back));
+  document.getElementById('mgFront').textContent=un(yd(dist(ref,h.front)));
+  document.getElementById('mgCenter').textContent=un(yd(dist(ref,h.g)));
+  document.getElementById('mgBack').textContent=un(yd(dist(ref,h.back)));
   document.getElementById('mgClub').textContent=club(yd(dist(ref,h.g)));
   document.getElementById('mgGpsState').textContent=MG.pos?'GPS live':'From tee · tap map or enable GPS';
   updateConditions();
@@ -91,7 +93,7 @@ function onMapClick(e){
   const ref=MG.pos||h.t;
   const d=yd(dist(ref,p));
   if(MG.measureMk)MG.map.removeLayer(MG.measureMk);
-  MG.measureMk=L.marker(ll(p),{icon:divMk('tgt')}).addTo(MG.map).bindPopup('<b>'+d+' yds</b><br>'+club(d)).openPopup();
+  MG.measureMk=L.marker(ll(p),{icon:divMk('tgt')}).addTo(MG.map).bindPopup('<b>'+ud(d)+'</b><br>'+club(d)).openPopup();
 }
 function startGPS(){
   if(MG.started||!navigator.geolocation)return; MG.started=true;
@@ -217,7 +219,7 @@ function updateConditions(){
   const plays=Math.round(horiz+elevAdj+windAdj); MG.lastPlays=plays;
   const clubEl=document.getElementById('mgClub'); if(clubEl)clubEl.textContent=club(plays);
   const pl=document.getElementById('mgPlays');
-  if(pl)pl.textContent='Plays '+plays+'y'+(dz!==null?(' · '+(dz>=0?'↑':'↓')+Math.abs(dz)+'ft'):'');
+  if(pl)pl.textContent='Plays '+ud(plays)+(dz!==null?(' · '+(dz>=0?'↑':'↓')+(MG.units==='m'?(Math.round(Math.abs(dz)*0.3048)+'m'):(Math.abs(dz)+'ft'))):'');
   const wd=document.getElementById('mgWind');
   if(wd){ wd.innerHTML = MG.wind ? '<span style="display:inline-block;transform:rotate('+(((MG.wind.dir+180)%360))+'deg)">↑</span> '+wtxt : ''; }
   updateCaddie();
@@ -282,7 +284,7 @@ function caddieTip(){
   const ref=MG.pos||h.t, green=h.g, par=h.par||4;
   const horiz=yd(dist(ref,green)), plays=MG.lastPlays||horiz;
   const wp=MG.wind?(' '+Math.round(MG.wind.spd)+'mph '+(MG.lastWindKind||'wind')+'.'):'';
-  if(par<=3){ return plays+'y to the pin — that\'s a '+club(plays)+'.'+wp; }
+  if(par<=3){ return ud(plays)+' to the pin — that\'s a '+club(plays)+'.'+wp; }
   // hazards in the driving corridor near the intended line
   const haz=(MG.course.hz||[]).map(z=>({z,proj:lineProj(h.t,green,[z[1],z[2]]),carry:yd(dist(h.t,[z[1],z[2]]))}))
     .filter(o=>o.proj.perpM<34 && o.carry>195 && o.carry<300)
@@ -290,11 +292,11 @@ function caddieTip(){
   let tip;
   if(haz.length){
     const w=haz[0], side=w.proj.side>0?'left':'right', kind=w.z[0]==='w'?'water':'a bunker';
-    tip='Watch '+kind+' '+side+' at '+w.carry+'y — favor the '+(side==='left'?'right':'left')+' off the tee.';
+    tip='Watch '+kind+' '+side+' at '+ud(w.carry)+' — favor the '+(side==='left'?'right':'left')+' off the tee.';
   } else { tip='Clear corridor — let the driver go.'; }
   const appr=Math.max(0,horiz-250);
   if(par===5) tip+=' Two good ones leaves a wedge.';
-  else if(appr>40) tip+=' A solid drive leaves about '+appr+'y in.';
+  else if(appr>40) tip+=' A solid drive leaves about '+ud(appr)+' in.';
   return tip+wp;
 }
 function updateCaddie(){ const el=document.getElementById('mgCaddie'); if(el)el.textContent=caddieTip(); }
@@ -383,5 +385,32 @@ window.openScorecard=function(){
 };
 
 try{ updateHomeStats(); }catch(e){}
+
+
+/* ===== Settings + green view ===== */
+window.openSettings=function(){
+  const u=MG.units||'y';
+  document.getElementById('sheet').innerHTML='<div class="grab"></div><h2>Settings</h2><div class="sub">Mulliganaire · your data stays on this device</div>'+
+   '<div class="setrow"><div><div class="st">Distance units</div><div class="ss">Yards or meters everywhere</div></div>'+
+   '<div class="seg"><button class="'+(u==='y'?'on':'')+'" onclick="setUnits(\'y\')">Yards</button><button class="'+(u==='m'?'on':'')+'" onclick="setUnits(\'m\')">Meters</button></div></div>'+
+   '<div class="setrow"><div><div class="st">Rounds played</div><div class="ss">'+allRounds().length+' saved · handicap '+(computeHandicap()!=null?computeHandicap().toFixed(1):'—')+'</div></div></div>'+
+   '<div class="setrow"><div><div class="st">Clear my data</div><div class="ss">Rounds, shots and scores</div></div><button class="btn ghost" style="width:auto;margin:0;padding:10px 14px" onclick="clearData()">Clear</button></div>'+
+   '<div class="setrow"><div><div class="st">Mulliganaire Pro</div><div class="ss">AI caddie depth, 3D greens, cloud sync</div></div><span class="badge gold">Soon</span></div>'+
+   '<div style="text-align:center;color:var(--muted);font-size:12px;margin-top:16px">v1.4 · Maps © OpenStreetMap (ODbL) · No ads, ever</div>'+
+   '<button class="btn primary" style="margin-top:14px" onclick="closeSheet()">Done</button>';
+  if(window.openSheet)openSheet();
+};
+window.setUnits=function(u){MG.units=u;try{localStorage.setItem('mg_units',u);}catch(e){}openSettings();if(MG.course)renderHole();};
+window.clearData=function(){
+  try{Object.keys(localStorage).forEach(k=>{if(k.indexOf('mg_shots_')===0||k.indexOf('mg_score_')===0||k==='mg_rounds')localStorage.removeItem(k);});}catch(e){}
+  MG.shotsData={}; updateHomeStats(); if(MG.course)renderHole(); if(window.toast)toast('Your data was cleared'); closeSheet();
+};
+window.mgGreenView=function(){
+  if(!MG.course||!MG.map)return;
+  const h=MG.course.holes[MG.hi];
+  MG.greenZoom=!MG.greenZoom;
+  const btn=document.getElementById('mgGreenBtn'); if(btn)btn.textContent=MG.greenZoom?'Hole':'Green';
+  if(MG.greenZoom){MG.map.setView(ll(h.g),19);} else {renderHole();}
+};
 
 })();
