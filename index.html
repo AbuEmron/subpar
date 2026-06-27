@@ -292,6 +292,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .modechip:active{transform:scale(.97)}
 .modechip.on{background:var(--txt);color:#04140c;border-color:var(--txt)}
 .mgi.shot{width:18px;height:18px;border-radius:50%;background:#ffce4d;color:#3a2a00;border:1.5px solid #fff;font-size:11px;font-weight:800}
+.mg-caddie{margin-top:8px;font-size:13px;line-height:1.5;color:var(--txt);background:linear-gradient(135deg,rgba(25,229,127,.1),rgba(255,255,255,.03));border:1px solid rgba(25,229,127,.2);border-radius:12px;padding:10px 12px;min-height:18px}
+.mg-caddie:empty{display:none}
+.mg-caddie::before{content:"\1F3CC\FE0F  Caddie: ";color:var(--green);font-weight:700}
 </style>
 </head>
 <body>
@@ -398,6 +401,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
       </div>
       <div class="club"><span class="l" id="mgGpsState">From tee &middot; tap map or enable GPS</span><span class="c" id="mgClub">&ndash;</span></div>
       <div class="mg-cond"><span id="mgWind" class="wind"></span><span id="mgPlays" class="plays"></span></div>
+      <div class="mg-caddie" id="mgCaddie"></div>
     </div>
     <div class="mg-modes">
       <button id="mMeasure" class="modechip on" onclick="mgMode('measure')">Measure</button>

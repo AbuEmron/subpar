@@ -204,7 +204,7 @@ function updateConditions(){
   let elevAdj=0, dz=null;
   const er=MG.elev[ekey(ref)], eg=MG.elev[ekey(green)];
   if(er!==undefined&&eg!==undefined){dz=Math.round((eg-er)*3.281);elevAdj=dz*0.33;}
-  let windAdj=0, wtxt='';
+  let windAdj=0, wtxt=''; MG.lastWindKind='';
   if(MG.wind){
     const shot=bearingDeg(ref,green), toward=(MG.wind.dir+180)%360;
     const ang=(toward-shot)*Math.PI/180;
@@ -212,13 +212,15 @@ function updateConditions(){
     windAdj=-along*horiz*0.01;                          // ~1% of carry per mph
     const kind=along<-0.7?'into':along>0.7?'down':'cross';
     wtxt=Math.round(MG.wind.spd)+'mph '+kind+' · '+Math.round(MG.wind.temp)+'°';
+    MG.lastWindKind=(kind==='into'?'into the wind':kind==='down'?'downwind':'crosswind');
   }
-  const plays=Math.round(horiz+elevAdj+windAdj);
+  const plays=Math.round(horiz+elevAdj+windAdj); MG.lastPlays=plays;
   const clubEl=document.getElementById('mgClub'); if(clubEl)clubEl.textContent=club(plays);
   const pl=document.getElementById('mgPlays');
   if(pl)pl.textContent='Plays '+plays+'y'+(dz!==null?(' · '+(dz>=0?'↑':'↓')+Math.abs(dz)+'ft'):'');
   const wd=document.getElementById('mgWind');
   if(wd){ wd.innerHTML = MG.wind ? '<span style="display:inline-block;transform:rotate('+(((MG.wind.dir+180)%360))+'deg)">↑</span> '+wtxt : ''; }
+  updateCaddie();
 }
 
 
@@ -263,5 +265,123 @@ window.mgAdj=function(hn,d){
   let tot=0,par=0; c.holes.forEach(hh=>{const vv=holeScore(hh,shots,man); if(vv!=null){tot+=vv;par+=(hh.par||0);}});
   const diff=tot-par; const el=document.querySelector('#sheet .sc-total'); if(el)el.innerHTML=tot+' <small>'+(diff>0?'+':'')+(diff===0?'E':diff)+'</small>';
 };
+
+
+/* ===== AI Caddie ===== */
+function lineProj(a,b,p){
+  const mlon=Math.cos(rd((a[1]+b[1])/2));
+  const vx=(b[0]-a[0])*mlon, vy=(b[1]-a[1]);
+  const wx=(p[0]-a[0])*mlon, wy=(p[1]-a[1]);
+  const L2=vx*vx+vy*vy; let t=L2?(wx*vx+wy*vy)/L2:0;
+  const dx=wx-vx*t, dy=wy-vy*t;
+  return { t, perpM:Math.sqrt(dx*dx+dy*dy)*111320, side:(vx*wy-vy*wx) };
+}
+function caddieTip(){
+  if(!MG.course)return '';
+  const h=MG.course.holes[MG.hi]; if(!h)return '';
+  const ref=MG.pos||h.t, green=h.g, par=h.par||4;
+  const horiz=yd(dist(ref,green)), plays=MG.lastPlays||horiz;
+  const wp=MG.wind?(' '+Math.round(MG.wind.spd)+'mph '+(MG.lastWindKind||'wind')+'.'):'';
+  if(par<=3){ return plays+'y to the pin — that\'s a '+club(plays)+'.'+wp; }
+  // hazards in the driving corridor near the intended line
+  const haz=(MG.course.hz||[]).map(z=>({z,proj:lineProj(h.t,green,[z[1],z[2]]),carry:yd(dist(h.t,[z[1],z[2]]))}))
+    .filter(o=>o.proj.perpM<34 && o.carry>195 && o.carry<300)
+    .sort((a,b)=>a.carry-b.carry);
+  let tip;
+  if(haz.length){
+    const w=haz[0], side=w.proj.side>0?'left':'right', kind=w.z[0]==='w'?'water':'a bunker';
+    tip='Watch '+kind+' '+side+' at '+w.carry+'y — favor the '+(side==='left'?'right':'left')+' off the tee.';
+  } else { tip='Clear corridor — let the driver go.'; }
+  const appr=Math.max(0,horiz-250);
+  if(par===5) tip+=' Two good ones leaves a wedge.';
+  else if(appr>40) tip+=' A solid drive leaves about '+appr+'y in.';
+  return tip+wp;
+}
+function updateCaddie(){ const el=document.getElementById('mgCaddie'); if(el)el.textContent=caddieTip(); }
+
+/* ===== Round engine + handicap ===== */
+function allRounds(){try{return JSON.parse(localStorage.getItem('mg_rounds')||'[]');}catch(e){return [];}}
+function computeHandicap(){
+  const r=allRounds().filter(x=>x.diff!=null).map(x=>x.diff).sort((a,b)=>a-b);
+  if(!r.length)return null;
+  const useN=Math.max(1,Math.min(8,Math.round(r.length*0.4)));
+  const avg=r.slice(0,useN).reduce((a,b)=>a+b,0)/useN;
+  return Math.round(avg*0.96*10)/10;
+}
+window.finishRound=function(){
+  const c=MG.course; if(!c){return;}
+  const shots=loadShots(), man=loadScore();
+  const played=c.holes.filter(h=>holeScore(h,shots,man)!=null);
+  if(!played.length){ if(window.toast)toast('Track or enter scores first'); return; }
+  let score=0,par=0,bir=0,prs=0,bog=0;
+  played.forEach(h=>{const v=holeScore(h,shots,man);score+=v;par+=(h.par||0);const d=v-(h.par||0);if(d<0)bir++;else if(d===0)prs++;else bog++;});
+  const r={course:c.n,date:Date.now(),holes:played.length,score,par,diff:score-par,bir,prs,bog};
+  const rounds=allRounds(); rounds.unshift(r); localStorage.setItem('mg_rounds',JSON.stringify(rounds.slice(0,40)));
+  localStorage.removeItem('mg_shots_'+slug(c.n)); localStorage.removeItem('mg_score_'+slug(c.n)); MG.shotsData={};
+  updateHomeStats();
+  showRoundSummary(r);
+};
+function showRoundSummary(r){
+  const diff=r.score-r.par, hc=computeHandicap();
+  document.getElementById('sheet').innerHTML='<div class="grab"></div>'+
+   '<h2>Round saved</h2><div class="sub">'+r.course+' · '+r.holes+' holes</div>'+
+   '<div style="text-align:center;margin:14px 0"><div style="font-family:\'Sora\';font-weight:800;font-size:64px;line-height:1">'+r.score+'</div>'+
+   '<div style="color:var(--muted);font-size:15px;margin-top:2px">'+(diff>=0?'+':'')+diff+' to par</div></div>'+
+   '<div class="chips" style="margin:10px 0">'+
+   '<div class="chip"><div class="v pos">'+r.bir+'</div><div class="k">Birdies+</div></div>'+
+   '<div class="chip"><div class="v">'+r.prs+'</div><div class="k">Pars</div></div>'+
+   '<div class="chip"><div class="v neg">'+r.bog+'</div><div class="k">Bogeys+</div></div>'+
+   (hc!=null?'<div class="chip"><div class="v">'+hc.toFixed(1)+'</div><div class="k">Handicap</div></div>':'')+
+   '</div><button class="btn primary" style="margin-top:12px" onclick="closeSheet();go(\'home\')">Done</button>';
+  if(window.openSheet)openSheet();
+}
+function updateHomeStats(){
+  const hc=computeHandicap();
+  if(hc!=null){const el=document.getElementById('hcVal');if(el)el.textContent=hc.toFixed(1);
+    const tr=document.getElementById('hcTrend');if(tr)tr.textContent='Based on your rounds';}
+  const rounds=allRounds();
+  if(rounds.length){
+    const rr=document.getElementById('recentRounds');
+    if(rr)rr.innerHTML=rounds.slice(0,4).map(r=>{const dd=new Date(r.date);const md=dd.toLocaleDateString(undefined,{month:'short',day:'numeric'});const diff=r.score-r.par;return '<div class="row"><div class="ic">⛳</div><div class="main"><h4>'+r.course+'</h4><p>'+md+' · '+r.holes+' holes</p></div><div class="end"><div class="big">'+r.score+'</div><div class="sm">'+(diff>=0?'+':'')+diff+'</div></div></div>';}).join('');
+  }
+}
+
+/* ===== Course picker incl. baked index ===== */
+window.mgOpenPicker=function(){
+  const pop=POPULAR.map((n,i)=>'<div class="row" onclick="mgPick('+i+')"><div class="ic" style="font-size:18px">&#9971;</div><div class="main"><h4>'+n+'</h4><p>'+(n==='Pebble Beach Golf Links'?'Baked offline':'Live from OpenStreetMap')+'</p></div><div class="end"><span class="badge">Load</span></div></div>').join('');
+  document.getElementById('sheet').innerHTML='<div class="grab"></div><h2>Courses</h2><div class="sub">Search any course on earth &mdash; live from OpenStreetMap</div>'+
+   '<input id="mgSearch" placeholder="Search a course…" autocomplete="off" style="width:100%;padding:13px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--stroke);color:var(--txt);font-size:15px;margin-bottom:12px" onkeydown="if(event.key===String.fromCharCode(69,110,116,101,114))mgSearchGo()"/>'+
+   '<div id="mgPickState" style="color:var(--muted);font-size:13px;margin:2px 0 12px;display:none"></div>'+
+   '<div id="mgBaked"></div><div class="list">'+pop+'</div>';
+  if(window.openSheet)openSheet();
+  fetch('courses/index.json').then(r=>r.ok?r.json():{}).then(idx=>{
+    const ks=Object.keys(idx||{}); if(!ks.length)return;
+    document.getElementById('mgBaked').innerHTML='<div class="section-title" style="margin:4px 0 10px">Baked &amp; instant ('+ks.length+')</div><div class="list" style="margin-bottom:14px">'+
+      ks.slice(0,40).map(k=>'<div class="row" onclick="mgLoadBaked(\''+k+'\')"><div class="ic" style="font-size:18px">&#9971;</div><div class="main"><h4>'+(idx[k].n||k)+'</h4><p>'+(idx[k].holes||'')+' holes · instant</p></div><div class="end"><span class="badge gold">Instant</span></div></div>').join('')+'</div>';
+  }).catch(()=>{});
+};
+window.mgPickCourse=window.mgOpenPicker;
+window.mgLoadBaked=function(sl){
+  pickState('Loading…');
+  const url=sl==='pebble-beach-golf-links'?'pebble.json':'courses/'+sl+'.json';
+  fetch(url).then(r=>r.json()).then(c=>{loadCourse(c);renderHole();if(window.closeSheet)closeSheet();}).catch(()=>pickState('Could not load that course.'));
+};
+
+/* ===== scorecard with Finish round ===== */
+window.openScorecard=function(){
+  if(!MG.course){return;}
+  const c=MG.course, shots=loadShots(), man=loadScore();
+  let tot=0,par=0; c.holes.forEach(h=>{const v=holeScore(h,shots,man); if(v!=null){tot+=v;par+=(h.par||0);}});
+  const diff=tot-par;
+  document.getElementById('sheet').innerHTML='<div class="grab"></div>'+
+   '<div class="sc-head"><div><h2>Scorecard</h2><div class="sub" style="margin:0">'+c.n+' &middot; auto from tracked shots</div></div>'+
+   '<div style="text-align:right"><div class="sc-total">'+(tot||'&mdash;')+' <small>'+(tot?((diff>0?'+':'')+(diff===0?'E':diff)):'')+'</small></div></div></div>'+
+   '<div class="holegrid" id="mgGrid"></div>'+
+   '<button class="btn primary" style="margin-top:18px" onclick="finishRound()">Finish &amp; save round</button>'+
+   '<button class="btn ghost" onclick="closeSheet()">Keep playing</button>';
+  mgGrid(); if(window.openSheet)openSheet();
+};
+
+try{ updateHomeStats(); }catch(e){}
 
 })();
